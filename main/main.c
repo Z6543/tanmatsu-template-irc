@@ -83,20 +83,13 @@ static void do_back(void) {
     lv_group_t* group = lv_group_get_default();
     if (group) lv_group_remove_all_objs(group);
     lv_obj_t* menu_scr = lv_obj_create(NULL);
+    irc_menu_init(menu_scr, do_connect);
     lv_screen_load(menu_scr);
-    irc_menu_init(do_connect);
     lvgl_unlock();
 }
 
 static void connect_task(void* arg) {
-    // Switch to chat UI from this task context
-    lvgl_lock();
-    lv_group_t* group = lv_group_get_default();
-    if (group) lv_group_remove_all_objs(group);
-    lv_obj_t* chat_screen = lv_obj_create(NULL);
-    lv_screen_load(chat_screen);
-    irc_ui_init(do_back);
-    lvgl_unlock();
+    ESP_LOGI(TAG, "connect_task started");
 
     if (!wifi_ready) {
         irc_ui_set_status("Initializing WiFi...");
@@ -104,6 +97,7 @@ static void connect_task(void* arg) {
         if (wifi_remote_initialize() != ESP_OK) {
             ESP_LOGE(TAG, "WiFi radio not responding");
             irc_ui_set_status("WiFi unavailable");
+            irc_ui_hide_spinner();
             vTaskDelete(NULL);
             return;
         }
@@ -113,12 +107,14 @@ static void connect_task(void* arg) {
         wifi_connection_init_stack();
 
         irc_ui_set_status("Connecting to WiFi...");
+        ESP_LOGI(TAG, "Connecting to WiFi...");
         if (wifi_connect_try_all() == ESP_OK) {
             ESP_LOGI(TAG, "WiFi connected");
             wifi_ready = true;
         } else {
             ESP_LOGW(TAG, "WiFi connection failed");
             irc_ui_set_status("WiFi connection failed");
+            irc_ui_hide_spinner();
             vTaskDelete(NULL);
             return;
         }
@@ -132,6 +128,7 @@ static void connect_task(void* arg) {
 
     esp_err_t res = irc_client_start(&active_config,
                                       irc_event_handler);
+    irc_ui_hide_spinner();
     if (res != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start IRC client");
         irc_ui_set_status("IRC client failed to start");
@@ -142,8 +139,19 @@ static void connect_task(void* arg) {
 
 static void do_connect(const irc_config_t* config) {
     memcpy(&active_config, config, sizeof(irc_config_t));
-    // Spawn background task — don't do UI/WiFi work in event context
-    xTaskCreate(connect_task, "irc_connect", 8192, NULL, 5, NULL);
+
+    // Switch to chat UI now (we're in LVGL task context, lock held)
+    lv_group_t* group = lv_group_get_default();
+    if (group) lv_group_remove_all_objs(group);
+    lv_obj_t* chat_screen = lv_obj_create(NULL);
+    irc_ui_init(chat_screen, do_back);
+    lv_screen_load(chat_screen);
+
+    BaseType_t ret = xTaskCreate(connect_task, "irc_connect",
+                                 8192, NULL, 5, NULL);
+    if (ret != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create connect task");
+    }
 }
 
 void app_main(void) {
@@ -182,6 +190,7 @@ void app_main(void) {
 
     // Show settings menu — user presses Connect to proceed
     lvgl_lock();
-    irc_menu_init(do_connect);
+    lv_obj_t* screen = lv_screen_active();
+    irc_menu_init(screen, do_connect);
     lvgl_unlock();
 }

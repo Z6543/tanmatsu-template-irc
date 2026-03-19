@@ -99,11 +99,11 @@ static void on_connect_clicked(lv_event_t* e) {
     }
 }
 
-void irc_menu_init(irc_menu_connect_cb_t on_connect) {
+void irc_menu_init(lv_obj_t* screen, irc_menu_connect_cb_t on_connect) {
     connect_cb = on_connect;
     irc_settings_load(&menu_config);
 
-    menu_screen = lv_screen_active();
+    menu_screen = screen;
     lv_obj_set_flex_flow(menu_screen, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(menu_screen, 8, 0);
     lv_obj_set_style_pad_gap(menu_screen, 6, 0);
