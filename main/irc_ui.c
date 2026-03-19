@@ -29,6 +29,7 @@ static lv_obj_t* status_label;
 static lv_obj_t* server_label;
 static lv_obj_t* msg_panel;
 static lv_obj_t* input_textarea;
+static lv_obj_t* spinner_overlay;
 
 static irc_ui_back_cb_t back_callback;
 
@@ -163,7 +164,19 @@ static void add_server_message_async(void* data) {
 static void set_status_async(void* data) {
     pending_text_t* s = (pending_text_t*)data;
     lv_label_set_text(status_label, s->text);
+    if (spinner_overlay) {
+        lv_obj_t* lbl = lv_obj_get_child(spinner_overlay, 1);
+        if (lbl) lv_label_set_text(lbl, s->text);
+    }
     free(s);
+}
+
+static void hide_spinner_async(void* data) {
+    (void)data;
+    if (spinner_overlay) {
+        lv_obj_delete(spinner_overlay);
+        spinner_overlay = NULL;
+    }
 }
 
 static void add_channel_async(void* data) {
@@ -288,13 +301,11 @@ static void on_input_ready(lv_event_t* e) {
     }
 }
 
-void irc_ui_init(irc_ui_back_cb_t back_cb) {
+void irc_ui_init(lv_obj_t* screen, irc_ui_back_cb_t back_cb) {
     back_callback = back_cb;
     num_channels = 0;
     active_idx = -1;
     memset(channels, 0, sizeof(channels));
-
-    lv_obj_t* screen = lv_screen_active();
     lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(screen, 2, 0);
     lv_obj_set_style_pad_gap(screen, 2, 0);
@@ -332,6 +343,29 @@ void irc_ui_init(irc_ui_back_cb_t back_cb) {
     lv_obj_set_style_border_color(msg_panel,
                                   lv_color_hex(0x888888), 0);
     lv_obj_remove_flag(msg_panel, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Spinner overlay (shown during connection)
+    spinner_overlay = lv_obj_create(msg_panel);
+    lv_obj_remove_style_all(spinner_overlay);
+    lv_obj_set_size(spinner_overlay, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(spinner_overlay,
+                              lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(spinner_overlay, LV_OPA_70, 0);
+    lv_obj_set_flex_flow(spinner_overlay, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(spinner_overlay, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(spinner_overlay, 12, 0);
+    lv_obj_remove_flag(spinner_overlay, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t* spinner = lv_spinner_create(spinner_overlay);
+    lv_spinner_set_anim_params(spinner, 1000, 270);
+    lv_obj_set_size(spinner, 48, 48);
+
+    lv_obj_t* spin_label = lv_label_create(spinner_overlay);
+    lv_label_set_text(spin_label, "Connecting...");
+    lv_obj_set_style_text_color(spin_label,
+                                lv_color_hex(0xCCCCCC), 0);
 
     // Server message line
     server_label = lv_label_create(screen);
@@ -440,4 +474,10 @@ const char* irc_ui_get_active_channel(void) {
         return channels[active_idx].name;
     }
     return NULL;
+}
+
+void irc_ui_hide_spinner(void) {
+    lvgl_lock();
+    lv_async_call(hide_spinner_async, NULL);
+    lvgl_unlock();
 }
