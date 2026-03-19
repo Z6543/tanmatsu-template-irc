@@ -1,0 +1,21 @@
+menu "IRC Client Configuration"
+    config IRC_SERVER_HOST
+        string "IRC server hostname"
+        default "irc.libera.chat"
+
+    config IRC_SERVER_PORT
+        int "IRC server port"
+        default 6697
+
+    config IRC_USE_TLS
+        bool "Use TLS"
+        default y
+
+    config IRC_NICKNAME
+        string "Nickname"
+        default "tanmatsu"
+
+    config IRC_CHANNEL
+        string "Channel (with #)"
+        default "#tanmatsu"
+endmenu
