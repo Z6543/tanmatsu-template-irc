@@ -1,15 +1,30 @@
 PORT ?= /dev/ttyACM0
 
-IDF_PATH ?= $(shell cat .IDF_PATH 2>/dev/null || echo `pwd`/esp-idf)
-IDF_TOOLS_PATH ?= $(shell cat .IDF_TOOLS_PATH 2>/dev/null || echo `pwd`/esp-idf-tools)
-IDF_BRANCH ?= v5.4
+IDF_PATH = /SSD/tanmatsu/esp-idf
+IDF_TOOLS_PATH = /home/ubuntu/.espressif
+IDF_BRANCH ?= v5.5.1
 IDF_EXPORT_QUIET ?= 1
 IDF_GITHUB_ASSETS ?= dl.espressif.com/github_assets
 MAKEFLAGS += --silent
 
 SHELL := /usr/bin/env bash
 
-DEVICE ?= tanmatsu # Default target device
+DEVICE ?= tanmatsu
+BUILD ?= build/$(DEVICE)
+SDKCONFIG_DEFAULTS ?= sdkconfigs/general;sdkconfigs/$(DEVICE)
+SDKCONFIG ?= sdkconfig_$(DEVICE)
+
+# Set IDF_TARGET based on device name
+ifeq ($(DEVICE), tanmatsu)
+IDF_TARGET ?= esp32p4
+else ifeq ($(DEVICE), mch2022)
+IDF_TARGET ?= esp32
+else
+$(warning "Unknown device $(DEVICE), defaulting to ESP32")
+IDF_TARGET ?= esp32
+endif
+
+IDF_PARAMS := -B $(BUILD) build -DDEVICE=$(DEVICE) -DSDKCONFIG_DEFAULTS="$(SDKCONFIG_DEFAULTS)" -DSDKCONFIG=$(SDKCONFIG) -DIDF_TARGET=$(IDF_TARGET)
 
 export IDF_TOOLS_PATH
 export IDF_GITHUB_ASSETS
@@ -45,20 +60,20 @@ refreshsdk: removesdk sdk
 
 .PHONY: menuconfig
 menuconfig:
-	source "$(IDF_PATH)/export.sh" && idf.py menuconfig -DDEVICE=$(DEVICE)
-	
+	source "$(IDF_PATH)/export.sh" && idf.py menuconfig -DDEVICE=$(DEVICE) -DSDKCONFIG_DEFAULTS="$(SDKCONFIG_DEFAULTS)" -DSDKCONFIG=$(SDKCONFIG) -DIDF_TARGET=$(IDF_TARGET)
+
 # Cleaning
 
 .PHONY: clean
 clean:
-	rm -rf "build"
+	rm -rf $(BUILD)
 
 .PHONY: fullclean
 fullclean: clean
-	rm -rf sdkconfig
-	rm -rf sdkconfig.old
-	rm -rf sdkconfig.ci
-	rm -rf sdkconfig.defaults
+	rm -f sdkconfig
+	rm -f sdkconfig.old
+	rm -f sdkconfig.ci
+	rm -f sdkconfig.defaults
 
 .PHONY: distclean
 distclean: fullclean
@@ -78,25 +93,38 @@ checkbuildenv:
 
 .PHONY: build
 build: checkbuildenv
-	source "$(IDF_PATH)/export.sh" >/dev/null && idf.py build -DDEVICE=$(DEVICE)
+	source "$(IDF_PATH)/export.sh" >/dev/null && idf.py $(IDF_PARAMS)
+
+# Hardware
+
+.PHONY: flash
+flash: build
+	source "$(IDF_PATH)/export.sh" && idf.py $(IDF_PARAMS) flash -p $(PORT)
+
+.PHONY: monitor
+monitor:
+	source "$(IDF_PATH)/export.sh" && idf.py $(IDF_PARAMS) monitor -p $(PORT)
+
+.PHONY: flashmonitor
+flashmonitor: build
+	source "$(IDF_PATH)/export.sh" && idf.py $(IDF_PARAMS) flash -p $(PORT) monitor
 
 # Tools
 
 .PHONY: size
 size:
-	source "$(IDF_PATH)/export.sh" && idf.py size
+	source "$(IDF_PATH)/export.sh" && idf.py $(IDF_PARAMS) size
 
 .PHONY: size-components
 size-components:
-	source "$(IDF_PATH)/export.sh" && idf.py size-components
+	source "$(IDF_PATH)/export.sh" && idf.py $(IDF_PARAMS) size-components
 
 .PHONY: size-files
 size-files:
-	source "$(IDF_PATH)/export.sh" && idf.py size-files
+	source "$(IDF_PATH)/export.sh" && idf.py $(IDF_PARAMS) size-files
 
 # Formatting
 
 .PHONY: format
 format:
 	find main/ -iname '*.h' -o -iname '*.c' -o -iname '*.cpp' | xargs clang-format -i
-
